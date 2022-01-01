@@ -58,6 +58,7 @@ jobs:
         # 2021.10.28-2133+K2P-PSG1218
         echo "TAG=v$VERSION+${val2}" >> $GITHUB_ENV
         ip addr
+
     - name: 创建目录
       run: |
         echo ${{ env.NAME }}
@@ -92,6 +93,7 @@ jobs:
         #echo $val2
         sed -i "s#\(.*Non-Commercial Use Only[^;]*;\).*#$val2#" user/www/n56u_ribbon_fixed/state.js
         grep "Non-Commercial Use Only" user/www/n56u_ribbon_fixed/state.js
+
     - name: 开始编译
       if: true
       env: 
