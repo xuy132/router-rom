@@ -12,16 +12,20 @@ on:
         # Friendly description to be shown in the UI instead of 'name'
         description: 设置编译的固件型号,空格分隔.
         # Default value if no value is explicitly provided
-        default: "K2P PSG1218 NEWIFI3"
+        default: "K2P PSG1218"
         # Input has to be provided for the workflow to run
-        required: true
+        required: false
       release:
         # Friendly description to be shown in the UI instead of 'name'
-        description: 是否需要发布到Release?(不发布也可以到Artifacts下载)
+        #无法换行
+        #description: "是否需要发布到Release?\n(不发布也可以到Artifacts下载)"
+        #缩短长度还是解决不了手机页面的显示超出
+        #description: "是否需要发布到Release?"
+        description: "是否需要发布到Release? (不发布也可以到Artifacts下载)"
         # Default value if no value is explicitly provided
         default: 'yes'
         # Input has to be provided for the workflow to run
-        required: true
+        required: false
 
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
@@ -42,19 +46,24 @@ jobs:
         echo "${{ github.event.inputs.release }}"
         echo 
         echo 当前目录:$(pwd)
-        # 版本号
-        VERSION=$(TZ='Asia/Shanghai' date +%Y%m%d.%H%M)
-        echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
+        # 版本号,用日期
+        VERSION=$(TZ='Asia/Shanghai' date +%Y.%m.%d-%H%M)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
         # $GITHUB_ENV变量必须要在下一个流程才生效
         echo "DIR=/opt/rt-n56u" >> $GITHUB_ENV
+        val1="${{ github.event.inputs.production }}"
+        val2=$(echo $val1 | sed 's/ /-/')
+        echo "NAME=$VERSION+${val2}" >> $GITHUB_ENV
+        #让版本号符合版本规范 1.0.202110252117+K2P-PSG1218
+        # 2021.10.28-2133+K2P-PSG1218
+        echo "TAG=v$VERSION+${val2}" >> $GITHUB_ENV
         ip addr
-
     - name: 创建目录
       run: |
-        echo ${{ env.RELEASE_VERSION }}
-        mkdir -p ${{ env.DIR }}
-        sudo mkdir -p /opt/images/
-        sudo chmod 777 /opt/images/
+        echo ${{ env.NAME }}
+        echo ${{ env.TAG }}
+        sudo mkdir -m 777 -p ${{ env.DIR }}
+        sudo mkdir -m 777 -p /opt/images/
         
         echo 开始编译时间 >> /opt/images/readme.txt
         TZ='Asia/Shanghai'  date  '+%Y-%m-%d %H:%M:%S' >> /opt/images/readme.txt
@@ -73,7 +82,16 @@ jobs:
         cd ${{ env.DIR }}/toolchain-mipsel
         sh dl_toolchain.sh > /dev/null
         pwd
-
+        
+    - name: 路由器页面下加入编译时间和个人信息标签
+      if: true
+      run: | 
+        cd ${{ env.DIR }}/trunk
+        valtime=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')
+        val2="\\1 footer_code +='编译日期 $valtime by <a href=\"https://github.com/tick-guo/router-rom\" target=\"blank\">tick-guo</a> \& <a href=\"https://www.right.com.cn/forum/thread-5853731-1-1.html\" target=\"blank\">恩山论坛</a><br>';"
+        #echo $val2
+        sed -i "s#\(.*Non-Commercial Use Only[^;]*;\).*#$val2#" user/www/n56u_ribbon_fixed/state.js
+        grep "Non-Commercial Use Only" user/www/n56u_ribbon_fixed/state.js
     - name: 开始编译
       if: true
       env: 
@@ -113,6 +131,12 @@ jobs:
         echo  >> /opt/images/readme.txt
         echo md5校验值 >> /opt/images/readme.txt
         cd /opt/images
+        #为固件文件名加上日期
+        for i in *.trx
+        do
+          #echo org $i
+          mv -v "$i" "${i%.*}-${{ env.VERSION }}.trx"
+        done
         #测试
         md5sum *.trx >> /opt/images/readme.txt || echo
         ls -l
@@ -122,15 +146,15 @@ jobs:
       uses: actions/upload-artifact@v2
       if: true
       with:
-        name: ${{ env.RELEASE_VERSION }}
+        name: ${{ env.NAME }}
         path: /opt/images
         
     - name: 发布到Release
       if: ${{ github.event.inputs.release == 'yes' }}
       uses: softprops/action-gh-release@v1
       with:
-        name: K2P+K2_${{ env.RELEASE_VERSION }}
-        tag_name: ${{ env.RELEASE_VERSION }}
+        name: ${{ env.NAME }}
+        tag_name: ${{ env.TAG }}
         body_path: /opt/images/readme.txt
         draft: false
         prerelease: false
